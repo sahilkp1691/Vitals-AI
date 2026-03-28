@@ -1,24 +1,47 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
+type Mode = 'signin' | 'signup' | 'verify'
+
 export default function LoginPage() {
+  const router = useRouter()
+  const supabase = createClient()
+  const [mode, setMode] = useState<Mode>('signin')
   const [email, setEmail] = useState('')
-  const [sent, setSent] = useState(false)
+  const [password, setPassword] = useState('')
+  const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const supabase = createClient()
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSignIn(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) {
+      setError(error.message)
+      setLoading(false)
+      return
+    }
+
+    router.push('/')
+    router.refresh()
+  }
+
+  async function handleSignUp(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+
+    const { error } = await supabase.auth.signUp({
       email,
+      password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: undefined, // disable magic link, use OTP
       },
     })
 
@@ -28,8 +51,29 @@ export default function LoginPage() {
       return
     }
 
-    setSent(true)
+    setMode('verify')
     setLoading(false)
+  }
+
+  async function handleVerifyOtp(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token: otp,
+      type: 'signup',
+    })
+
+    if (error) {
+      setError(error.message)
+      setLoading(false)
+      return
+    }
+
+    router.push('/onboarding')
+    router.refresh()
   }
 
   return (
@@ -38,7 +82,8 @@ export default function LoginPage() {
       <div className="relative z-10 w-full max-w-sm animate-fade-up">
         {/* Logo */}
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4" style={{ background: 'var(--accent-glow)', border: '1px solid var(--accent)' }}>
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
+            style={{ background: 'var(--accent-glow)', border: '1px solid var(--accent)' }}>
             <span style={{ fontSize: 28 }}>⚡</span>
           </div>
           <h1 className="text-3xl font-display font-bold" style={{ fontFamily: 'Syne, sans-serif' }}>Vital</h1>
@@ -46,61 +91,73 @@ export default function LoginPage() {
         </div>
 
         <div className="glass p-8">
-          {!sent ? (
-            <form onSubmit={handleSubmit}>
-              <div className="mb-6">
-                <label className="label">Email address</label>
+          {mode === 'verify' ? (
+            <form onSubmit={handleVerifyOtp}>
+              <div className="text-center mb-6">
+                <p style={{ fontSize: 32, marginBottom: 8 }}>📬</p>
+                <h2 className="text-lg font-display font-semibold mb-1" style={{ fontFamily: 'Syne, sans-serif' }}>Check your email</h2>
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                  We sent a 6-digit code to <strong style={{ color: 'var(--text)' }}>{email}</strong>
+                </p>
+              </div>
+              <div className="mb-5">
+                <label className="label">Verification code</label>
                 <input
-                  type="email"
-                  className="input"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
+                  className="input text-center text-2xl tracking-widest font-display"
+                  style={{ fontFamily: 'Syne, sans-serif', letterSpacing: '0.3em' }}
+                  placeholder="000000"
+                  value={otp}
+                  onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  maxLength={6}
                   autoFocus
+                  required
                 />
               </div>
-
-              {error && (
-                <p className="text-sm mb-4" style={{ color: 'var(--red)' }}>{error}</p>
-              )}
-
-              <button
-                type="submit"
-                className="btn-primary w-full text-base"
-                disabled={loading || !email}
-              >
-                {loading ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Sending…
-                  </span>
-                ) : (
-                  'Send magic link'
-                )}
+              {error && <p className="text-sm mb-4" style={{ color: 'var(--red)' }}>{error}</p>}
+              <button type="submit" className="btn-primary w-full" disabled={loading || otp.length < 6}>
+                {loading ? 'Verifying…' : 'Verify email →'}
               </button>
-
-              <p className="text-center text-sm mt-4" style={{ color: 'var(--text-muted)' }}>
-                No password needed. We&apos;ll email you a sign-in link.
-              </p>
+              <button type="button" className="btn-ghost w-full mt-2 justify-center text-sm"
+                onClick={() => { setMode('signup'); setOtp(''); setError('') }}>
+                Back
+              </button>
             </form>
           ) : (
-            <div className="text-center py-4">
-              <div className="text-4xl mb-4">📬</div>
-              <h2 className="text-xl font-display mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>Check your inbox</h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-                We sent a magic link to <strong style={{ color: 'var(--text)' }}>{email}</strong>. Click it to sign in.
-              </p>
-              <button
-                className="btn-ghost mt-6 text-sm"
-                onClick={() => { setSent(false); setEmail('') }}
-              >
-                Use a different email
+            <form onSubmit={mode === 'signin' ? handleSignIn : handleSignUp}>
+              {/* Mode toggle */}
+              <div className="flex gap-1 p-1 rounded-xl mb-6" style={{ background: 'var(--surface-2)' }}>
+                <button type="button" className={`tab flex-1 ${mode === 'signin' ? 'active' : ''}`}
+                  onClick={() => { setMode('signin'); setError('') }}>
+                  Sign in
+                </button>
+                <button type="button" className={`tab flex-1 ${mode === 'signup' ? 'active' : ''}`}
+                  onClick={() => { setMode('signup'); setError('') }}>
+                  Sign up
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <div>
+                  <label className="label">Email</label>
+                  <input type="email" className="input" placeholder="you@example.com"
+                    value={email} onChange={e => setEmail(e.target.value)} required autoFocus />
+                </div>
+                <div>
+                  <label className="label">Password</label>
+                  <input type="password" className="input" placeholder={mode === 'signup' ? 'Min. 8 characters' : '••••••••'}
+                    value={password} onChange={e => setPassword(e.target.value)}
+                    minLength={mode === 'signup' ? 8 : undefined} required />
+                </div>
+              </div>
+
+              {error && <p className="text-sm mt-4" style={{ color: 'var(--red)' }}>{error}</p>}
+
+              <button type="submit" className="btn-primary w-full mt-6" disabled={loading || !email || !password}>
+                {loading
+                  ? (mode === 'signin' ? 'Signing in…' : 'Creating account…')
+                  : (mode === 'signin' ? 'Sign in →' : 'Create account →')}
               </button>
-            </div>
+            </form>
           )}
         </div>
       </div>

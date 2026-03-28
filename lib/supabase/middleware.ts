@@ -23,19 +23,22 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
+  // Refresh session if expired
   const { data: { user } } = await supabase.auth.getUser()
 
   const url = request.nextUrl.clone()
   const isAuthPage = url.pathname.startsWith('/auth')
+  const isOnboarding = url.pathname.startsWith('/onboarding')
   const isApi = url.pathname.startsWith('/api')
+  const isPublic = isAuthPage || isOnboarding || isApi
 
-  if (!user && !isAuthPage && !isApi) {
+  if (!user && !isPublic) {
     url.pathname = '/auth/login'
     return NextResponse.redirect(url)
   }
 
   if (user && isAuthPage) {
-    url.pathname = '/'
+    url.pathname = '/log'
     return NextResponse.redirect(url)
   }
 
